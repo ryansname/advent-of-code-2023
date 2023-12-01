@@ -7,6 +7,7 @@ const INPUT = @embedFile("inputs/day1.txt");
 pub fn main() !void {
     log.info("Part 1: {}", .{try part1(undefined, INPUT)});
     log.info("Part 2: {}", .{try part2(undefined, INPUT)});
+    log.info("Part 2 (short): {}", .{try part2Short(undefined, INPUT)});
 }
 
 fn part1(alloc: std.mem.Allocator, input: []const u8) !u64 {
@@ -104,6 +105,40 @@ fn part2(alloc: std.mem.Allocator, input: []const u8) !u64 {
     return sum;
 }
 
+// After looking in discord, this seemed funny
+fn part2Short(alloc: std.mem.Allocator, input: []const u8) !u64 {
+    _ = alloc;
+
+    var sum: u64 = 0;
+    var first_digit: ?u64 = null;
+    var last_digit: u64 = undefined;
+
+    const digit_strings = .{ "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
+
+    loop: for (input, 0..) |c, i| {
+        switch (c) {
+            '\n' => {
+                sum += first_digit.? * 10 + last_digit;
+                first_digit = null;
+            },
+            '0'...'9' => {
+                if (first_digit == null) first_digit = c - '0';
+                last_digit = c - '0';
+            },
+            else => inline for (digit_strings, 1..) |digit, value| {
+                if (std.mem.startsWith(u8, input[i..], digit)) {
+                    if (first_digit == null) first_digit = value;
+                    last_digit = value;
+                    continue :loop;
+                }
+            },
+        }
+    }
+    if (first_digit) |_| sum += first_digit.? * 10 + last_digit;
+
+    return sum;
+}
+
 const TEST_INPUT =
     \\1abc2
     \\pqr3stu8vwx
@@ -125,4 +160,5 @@ test "simple test" {
     var alloc = std.testing.allocator;
     try std.testing.expectEqual(@as(u64, 142), try part1(alloc, TEST_INPUT));
     try std.testing.expectEqual(@as(u64, 281), try part2(alloc, TEST_INPUT_2));
+    try std.testing.expectEqual(@as(u64, 281), try part2Short(alloc, TEST_INPUT_2));
 }
