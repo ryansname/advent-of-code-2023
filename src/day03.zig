@@ -7,26 +7,31 @@ const std = @import("std");
 const INPUT = @embedFile("inputs/day03.txt");
 
 pub fn main() !void {
-    const result = try parts(undefined, INPUT);
+    const result = try parts(INPUT);
     log.info("Part 1: {}", .{result.part1});
     log.info("Part 2: {}", .{result.part2});
 }
 
-fn getNeighbouringPart(buffer: []const u8, i: usize, stride: usize) ?std.meta.Tuple(&.{ u8, usize }) {
-    if (!ascii.isDigit(buffer[i - stride]) and buffer[i - stride] != '.') return .{ buffer[i - stride], i - stride };
-    if (!ascii.isDigit(buffer[i - stride - 1]) and buffer[i - stride - 1] != '.') return .{ buffer[i - stride - 1], i - stride - 1 };
-    if (!ascii.isDigit(buffer[i - stride + 1]) and buffer[i - stride + 1] != '.') return .{ buffer[i - stride + 1], i - stride + 1 };
-    if (!ascii.isDigit(buffer[i + stride]) and buffer[i + stride] != '.') return .{ buffer[i + stride], i + stride };
-    if (!ascii.isDigit(buffer[i + stride - 1]) and buffer[i + stride - 1] != '.') return .{ buffer[i + stride - 1], i + stride - 1 };
-    if (!ascii.isDigit(buffer[i + stride + 1]) and buffer[i + stride + 1] != '.') return .{ buffer[i + stride + 1], i + stride + 1 };
-    if (!ascii.isDigit(buffer[i - 1]) and buffer[i - 1] != '.') return .{ buffer[i - 1], i - 1 };
-    if (!ascii.isDigit(buffer[i + 1]) and buffer[i + 1] != '.') return .{ buffer[i + 1], i + 1 };
+fn getNeighbouringPart(buffer: []const u8, i: usize, stride: usize) ?struct { char: u8, idx: usize } {
+    const offsets = .{
+        i - stride,
+        i - stride - 1,
+        i - stride + 1,
+        i + stride,
+        i + stride - 1,
+        i + stride + 1,
+        i - 1,
+        i + 1,
+    };
+
+    inline for (offsets) |d| {
+        if (!ascii.isDigit(buffer[d]) and buffer[d] != '.') return .{ .char = buffer[d], .idx = d };
+    }
 
     return null;
 }
 
-fn parts(alloc: mem.Allocator, input: []const u8) !struct { part1: u64, part2: u64 } {
-    _ = alloc;
+fn parts(input: []const u8) !struct { part1: u64, part2: u64 } {
     var buffer = [_]u8{'.'} ** (150 * 150); // Approx correct size
     var neighbours = [_]?u64{null} ** buffer.len;
 
@@ -42,11 +47,6 @@ fn parts(alloc: mem.Allocator, input: []const u8) !struct { part1: u64, part2: u
         output_offset += stride;
         total += stride;
     }
-
-    // output_offset = 0;
-    // while (output_offset < total) : (output_offset += stride) {
-    //     log.err("{s}", .{buffer[output_offset .. output_offset + stride]});
-    // }
 
     var part_number: u64 = undefined;
     var part_1: u64 = 0;
@@ -67,7 +67,7 @@ fn parts(alloc: mem.Allocator, input: []const u8) !struct { part1: u64, part2: u
 
             if (getNeighbouringPart(&buffer, i, stride)) |part_deets| {
                 is_part_number = true;
-                if (part_deets.@"0" == '*') gear_idx = part_deets.@"1";
+                if (part_deets.char == '*') gear_idx = part_deets.idx;
             }
         },
         else => {
@@ -105,8 +105,7 @@ const TEST_INPUT =
 ;
 
 test "simple test" {
-    var alloc = std.testing.allocator;
-    const results = try parts(alloc, TEST_INPUT);
+    const results = try parts(TEST_INPUT);
     try std.testing.expectEqual(@as(u64, 4361), results.part1);
     try std.testing.expectEqual(@as(u64, 467835), results.part2);
 }
