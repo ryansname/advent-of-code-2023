@@ -140,6 +140,9 @@ fn part_2(input: []const u8) !struct { part1: u64, part2: u64 } {
     @memcpy(&steps_short_buf, &steps_to_loop);
     var steps_short = steps_short_buf[0..heres.len];
     for (steps_short) |ss| steps = @max(ss, steps);
+    var ghost_in_lockstep = [_]bool{false} ** steps_short_buf.len;
+
+    ghost_in_lockstep[0] = true;
 
     loop: while (true) {
         // Any ghost behind the leader will move
@@ -147,9 +150,18 @@ fn part_2(input: []const u8) !struct { part1: u64, part2: u64 } {
         for (steps_short[1..], 1..) |ss, idx| {
             if (steps_short[max_idx] < ss) max_idx = idx;
         }
-        for (steps_short, 0..) |*ss, idx| {
-            if (ss.* < steps_short[max_idx]) {
+
+        for (steps_short, ghost_in_lockstep[0..steps_short.len], 0..) |*ss, *in_lockstep, idx| {
+            while (ss.* < steps_short[max_idx]) {
                 ss.* += steps_in_loop[idx];
+            }
+
+            if (!in_lockstep.* and ss.* == steps_short[0]) {
+                in_lockstep.* = true;
+                // I'm tired and ran out of names, give me a break
+                for (&steps_in_loop, ghost_in_lockstep[0..steps_in_loop.len]) |*steps_tired, inner_in_lockstep| if (inner_in_lockstep) {
+                    steps_tired.* = ss.*;
+                };
             }
         }
 
