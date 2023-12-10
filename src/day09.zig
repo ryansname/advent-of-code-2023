@@ -18,16 +18,13 @@ const INPUT = @embedFile("inputs/day09.txt");
 pub fn main() !void {
     const result = try part1(INPUT);
     log.info("Part 1: {}", .{result.part1});
-
-    // const result_2 = try part_2(INPUT);
     log.info("Part 2: {}", .{result.part2});
 }
 
-fn calculateNext(values: []i64) i64 {
+fn calculate(comptime direction: enum { forward, reverse }, values: []i64) i64 {
     for (values) |v| {
         if (v != 0) break;
     } else {
-        // log.err("Returning 0", .{});
         return 0;
     }
 
@@ -37,34 +34,12 @@ fn calculateNext(values: []i64) i64 {
     for (values[0 .. values.len - 1], values[1..], next) |v1, v2, *n| {
         n.* = v2 - v1;
     }
-    log.info("Calculated {any}", .{next});
 
-    const last = values[values.len - 1];
-    const calculated = calculateNext(next);
-    // log.err("returning {} + {}", .{ last, calculated });
-    return last + calculated;
-}
-
-fn calculatePrevious(values: []i64) i64 {
-    for (values) |v| {
-        if (v != 0) break;
-    } else {
-        // log.err("Returning 0", .{});
-        return 0;
+    const calculated = calculate(direction, next);
+    switch (direction) {
+        .forward => return values[values.len - 1] + calculated,
+        .reverse => return values[0] - calculated,
     }
-
-    var next_buf: [64]i64 = undefined;
-    var next = next_buf[0 .. values.len - 1];
-
-    for (values[0 .. values.len - 1], values[1..], next) |v1, v2, *n| {
-        n.* = v2 - v1;
-    }
-    // log.info("Calculated {any}", .{next});
-
-    const first = values[0];
-    const calculated = calculatePrevious(next);
-    // log.err("returning {} + {}", .{ last, calculated });
-    return first - calculated;
 }
 
 fn part1(input: []const u8) !struct { part1: i64, part2: i64 } {
@@ -80,8 +55,8 @@ fn part1(input: []const u8) !struct { part1: i64, part2: i64 } {
         while (token_iter.next()) |token| : (line_nums_idx += 1) {
             line_nums_buf[line_nums_idx] = try fmt.parseInt(i64, token, 10);
         }
-        part_1 += calculateNext(line_nums_buf[0..line_nums_idx]);
-        part_2 += calculatePrevious(line_nums_buf[0..line_nums_idx]);
+        part_1 += calculate(.forward, line_nums_buf[0..line_nums_idx]);
+        part_2 += calculate(.reverse, line_nums_buf[0..line_nums_idx]);
     }
 
     return .{ .part1 = part_1, .part2 = part_2 };
