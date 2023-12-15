@@ -263,6 +263,15 @@ fn part1(input: []const u8) !struct { part1: i64, part2: i64 } {
         if (mem.eql(Rock, map, cycle_target)) break;
     }
 
+    const n_iters = 1000;
+    const start = std.time.microTimestamp();
+    for (0..n_iters) |_| {
+        rollCycle(map, stride);
+        cycles_simulated += 1;
+    }
+    const end = std.time.microTimestamp();
+    print("Took {}us ({}ms) to do {} iterations\n", .{ end - start, @divFloor((end - start), 1000), n_iters });
+
     const cycles_per_loop = cycles_simulated - loop_start;
     print("Loop length: {}\n", .{cycles_per_loop});
 

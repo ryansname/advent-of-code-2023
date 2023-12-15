@@ -21,60 +21,13 @@ fn iterTokens(string: []const u8) mem.TokenIterator(u8, .scalar) {
     return mem.tokenizeScalar(u8, string, ' ');
 }
 
-fn print2d(data: []const u8, print_stride: usize) void {
-    for (data, 0..) |d, idx| {
-        print("{c}", .{d});
-        if (idx % print_stride == print_stride - 1) print("\n", .{});
-    }
-}
-fn Dir(comptime dirs: u8) type {
-    return switch (dirs) {
-        4 => enum { N, S, E, W },
-        8 => enum { N, S, E, W, NE, SE, NW, SW },
-        else => @compileError("Unsupported number of dirs " ++ dirs),
-    };
-}
-fn NeighboursReturn(comptime dirs: u8, comptime BufferType: type) type {
-    return [dirs]struct { char: @typeInfo(BufferType).Pointer.child, idx: usize, dir: Dir(dirs) };
-}
-fn getNeighbours(comptime dirs: u8, buffer: anytype, i: usize, stride: usize) NeighboursReturn(dirs, @TypeOf(buffer)) {
-    const offsets = switch (dirs) {
-        4 => .{
-            .{ i - stride, .N },
-            .{ i + stride, .S },
-            .{ i - 1, .W },
-            .{ i + 1, .E },
-        },
-        8 => .{
-            .{ i - stride, .N },
-            .{ i - stride - 1, .NW },
-            .{ i - stride + 1, .NE },
-            .{ i + stride, .S },
-            .{ i + stride - 1, .SW },
-            .{ i + stride + 1, .SE },
-            .{ i - 1, .W },
-            .{ i + 1, .E },
-        },
-        else => @compileError("Unsupported number of dirs " ++ dirs),
-    };
-
-    var result: NeighboursReturn(dirs, @TypeOf(buffer)) = undefined;
-
-    inline for (offsets, &result) |d, *r| {
-        r.* = .{
-            .char = buffer[d.@"0"],
-            .idx = d.@"0",
-            .dir = d.@"1",
-        };
-    }
-    return result;
-}
-
 const INPUT = @embedFile("inputs/day12.txt");
 
 pub fn main() !void {
     const result = try part1(INPUT);
     const result_2 = try part2(INPUT);
+
+    std.debug.assert(result_2.part2 > 41477449305);
 
     log.info("Part 1: {}", .{result.part1});
     log.info("Part 2: {}", .{result_2.part2});
@@ -87,11 +40,12 @@ const PartiallyValidResult = union(enum) {
     partially_valid: struct {
         required_bad: ?usize,
         required_chars_to_finish: usize,
+        sequences_left: usize,
     },
 };
 fn isPartiallyValid(records: []const Element, sequences: []const u64) PartiallyValidResult {
     var in_bad = false;
-    var expected_bads: u64 = sequences[0];
+    var expected_bads: u64 = if (sequences.len == 0) 0 else sequences[0];
     var sequence_idx: usize = 1;
 
     for (records) |record| {
@@ -117,14 +71,17 @@ fn isPartiallyValid(records: []const Element, sequences: []const u64) PartiallyV
     }
 
     var required_chars_to_finish = expected_bads;
-    for (sequences[sequence_idx..]) |sequence| {
-        required_chars_to_finish += 1 + sequence;
+    if (sequences.len > 0) {
+        for (sequences[sequence_idx..]) |sequence| {
+            required_chars_to_finish += 1 + sequence;
+        }
     }
 
     return .{
         .partially_valid = .{
             .required_bad = if (in_bad and expected_bads > 0) expected_bads else null,
             .required_chars_to_finish = required_chars_to_finish,
+            .sequences_left = if (sequences.len > 0) sequences.len - sequence_idx else 0,
         },
     };
 }
@@ -141,7 +98,12 @@ fn areRecordsValid(records: []const Element, sequences: []const u64) bool {
     return fail_iter.next() == null;
 }
 
-fn printRecords(records: []const Element) void {
+fn printRecords(prefix: []const u8, records: []const Element, suffix: []const u8) void {
+    print("{s} ", .{prefix});
+    printRecordsOnly(records);
+    print(" {s}\n", .{suffix});
+}
+fn printRecordsOnly(records: []const Element) void {
     for (records) |r| print("{s}", .{switch (r) {
         .unknown => "?",
         .good => ".",
@@ -149,21 +111,43 @@ fn printRecords(records: []const Element) void {
     }});
 }
 
-fn countPossibilities(records_with_unknowns: []const Element, sequences: []const u64, records: []Element, idx: usize) u63 {
+fn countPossibilitiesStart(records_with_unknowns: []const Element, sequences: []const u64) u63 {
+    var workspace = [_]Element{.good} ** 128;
+    var result_cache: [128][128]?u63 = .{.{null} ** 128} ** 128;
+
+    printRecords("Processing", records_with_unknowns, "");
+
+    const result = countPossibilities(
+        records_with_unknowns,
+        sequences,
+        &result_cache,
+        workspace[0..records_with_unknowns.len],
+        0,
+    );
+
+    print("For smaller sequence: ", .{});
+    printRecordsOnly(records_with_unknowns);
+    print(" got {} results\n", .{result});
+
+    return result;
+}
+
+/// result_cache: [records_left][sequences_left]count
+fn countPossibilities(records_with_unknowns: []const Element, sequences: []const u64, result_cache: [][128]?u63, records: []Element, idx: usize) u63 {
     if (idx == 0) {
-        printRecords(records_with_unknowns);
+        printRecordsOnly(records_with_unknowns);
         print("\n", .{});
     }
 
     if (idx >= records.len) {
         if (areRecordsValid(records, sequences)) {
             print("Found valid sequence ", .{});
-            printRecords(records);
+            printRecordsOnly(records);
             print("\n", .{});
             return 1;
         } else {
             print("Found invalid sequence ", .{});
-            printRecords(records);
+            printRecordsOnly(records);
             print("\n", .{});
             return 0;
         }
@@ -176,14 +160,14 @@ fn countPossibilities(records_with_unknowns: []const Element, sequences: []const
         }
     } else {
         // Reached the end, recurse and check for total validity
-        return countPossibilities(records_with_unknowns, sequences, records, records.len);
+        return countPossibilities(records_with_unknowns, sequences, result_cache, records, records.len);
     };
 
     const first_unknown_idx = idx + offset;
     const validity = isPartiallyValid(records[0..first_unknown_idx], sequences);
     const partial = switch (validity) {
         .invalid => {
-            printRecords(records[0..first_unknown_idx]);
+            printRecordsOnly(records[0..first_unknown_idx]);
             print(" is not partially valid for {any}\n", .{sequences});
             return 0;
         },
@@ -202,7 +186,7 @@ fn countPossibilities(records_with_unknowns: []const Element, sequences: []const
         for (records[first_unknown_idx .. first_unknown_idx + required_bad], records_with_unknowns[first_unknown_idx .. first_unknown_idx + required_bad], 0..) |*r, src, i| switch (src) {
             .unknown, .bad => r.* = .bad,
             .good => {
-                printRecords(records[0 .. first_unknown_idx + i]);
+                printRecordsOnly(records[0 .. first_unknown_idx + i]);
                 print(" could not add enough bad items, added {}, needed {}!\n", .{ i, required_bad });
                 return 0;
             },
@@ -213,7 +197,7 @@ fn countPossibilities(records_with_unknowns: []const Element, sequences: []const
             switch (records_with_unknowns[idx_that_must_be_good]) {
                 .unknown, .good => records[idx_that_must_be_good] = .good,
                 .bad => {
-                    printRecords(records[0 .. idx_that_must_be_good + 1]);
+                    printRecordsOnly(records[0 .. idx_that_must_be_good + 1]);
                     print(" could not add good item spacer\n", .{});
                     return 0;
                 },
@@ -222,18 +206,39 @@ fn countPossibilities(records_with_unknowns: []const Element, sequences: []const
         } else idx_that_must_be_good;
 
         print("Added {} required bads ", .{required_bad});
-        printRecords(records[0..next_idx]);
+        printRecordsOnly(records[0..next_idx]);
         print("\n", .{});
-        return countPossibilities(records_with_unknowns, sequences, records, next_idx);
+
+        std.debug.assert(records[idx_that_must_be_good] == .good);
+        if (result_cache[idx_that_must_be_good][partial.sequences_left]) |count| {
+            // std.debug.print("Cache Hit!\n", .{});
+            return count;
+        }
+
+        const count = countPossibilities(records_with_unknowns, sequences, result_cache, records, next_idx);
+        result_cache[idx_that_must_be_good][partial.sequences_left] = count;
+
+        return count;
     } else {
         var count: u63 = 0;
         inline for (.{ .good, .bad }) |option| {
             records[first_unknown_idx] = option;
             print("Trying ", .{});
-            printRecords(records[0 .. first_unknown_idx + 1]);
+            printRecordsOnly(records[0 .. first_unknown_idx + 1]);
             print("\n", .{});
-            count += countPossibilities(records_with_unknowns, sequences, records, first_unknown_idx + 1);
+
+            const this_count = if (option == .good) blk: {
+                std.debug.assert(records[first_unknown_idx] == .good);
+                if (result_cache[first_unknown_idx][partial.sequences_left]) |c| break :blk c;
+
+                const c = countPossibilities(records_with_unknowns, sequences, result_cache, records, first_unknown_idx + 1);
+                result_cache[first_unknown_idx][partial.sequences_left] = c;
+                break :blk c;
+            } else countPossibilities(records_with_unknowns, sequences, result_cache, records, first_unknown_idx + 1);
+
+            count += this_count;
         }
+
         return count;
     }
 }
@@ -245,8 +250,16 @@ fn part1(input: []const u8) !struct { part1: i64, part2: i64 } {
     var next_record_idx: usize = 0;
     var next_sequence_idx: usize = 0;
 
+    var progress_root = std.Progress{};
+    var progress = progress_root.start("Part 1", mem.count(u8, input, "\n"));
+
     var part_1: i64 = 0;
     while (lines_iter.next()) |line| {
+        var node = progress.start(line, 0);
+        node.activate();
+        defer node.end();
+        std.debug.print("'{s}'\n", .{line});
+
         defer next_record_idx = 0;
         defer next_sequence_idx = 0;
 
@@ -271,11 +284,8 @@ fn part1(input: []const u8) !struct { part1: i64, part2: i64 } {
             break :blk .{ records_buf[0..next_record_idx], sequences_buf[0..next_sequence_idx] };
         };
 
-        var workspace = [_]Element{.good} ** records_buf.len;
-        const possibilities = countPossibilities(records, sequences, workspace[0..records.len], 0);
+        const possibilities = countPossibilitiesStart(records, sequences);
         part_1 += @intCast(possibilities);
-        // log.err("{any}", .{records});
-        // log.err("{any}", .{sequences});
     }
 
     var part_2: i64 = 0;
@@ -322,6 +332,7 @@ fn part2(input: []const u8) !struct { part1: i64, part2: i64 } {
                 next_sequence_idx += 1;
             }
 
+            // Repeat the input 4 times for a total of 5 copies
             for (1..5, 2..) |r, r2| {
                 @memcpy(records_buf[next_record_idx * r .. next_record_idx * r2], records_buf[0..next_record_idx]);
                 @memcpy(sequences_buf[next_sequence_idx * r .. next_sequence_idx * r2], sequences_buf[0..next_sequence_idx]);
@@ -329,17 +340,14 @@ fn part2(input: []const u8) !struct { part1: i64, part2: i64 } {
             next_record_idx *= 5;
             // Strip the trailing unknown
             next_record_idx -= 1;
+
             next_sequence_idx *= 5;
 
             break :blk .{ records_buf[0..next_record_idx], sequences_buf[0..next_sequence_idx] };
         };
 
-        var workspace = [_]Element{.good} ** records_buf.len;
-        const possibilities = countPossibilities(records, sequences, workspace[0..records.len], 0);
+        const possibilities = countPossibilitiesStart(records, sequences);
         part_2 += @intCast(possibilities);
-
-        // log.err("{any}", .{records});
-        // log.err("{any}", .{sequences});
     }
 
     return .{ .part1 = 0, .part2 = part_2 };
