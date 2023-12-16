@@ -13,6 +13,10 @@ pub fn iterTokens(string: []const u8) mem.TokenIterator(u8, .scalar) {
     return mem.tokenizeScalar(u8, string, ' ');
 }
 
+pub fn iterCsv(string: []const u8) mem.TokenIterator(u8, .scalar) {
+    return mem.tokenizeScalar(u8, string, ',');
+}
+
 // 2D stuff
 pub fn Dir(comptime dirs: u8) type {
     return switch (dirs) {
