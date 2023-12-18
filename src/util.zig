@@ -20,7 +20,21 @@ pub fn iterCsv(string: []const u8) mem.TokenIterator(u8, .scalar) {
 // 2D stuff
 pub fn Dir(comptime dirs: u8) type {
     return switch (dirs) {
-        4 => enum { N, S, E, W },
+        4 => enum {
+            N,
+            S,
+            E,
+            W,
+
+            pub fn inverse(self: Dir(4)) Dir(4) {
+                return switch (self) {
+                    .N => .S,
+                    .S => .N,
+                    .E => .W,
+                    .W => .E,
+                };
+            }
+        },
         8 => enum { N, S, E, W, NE, SE, NW, SW },
         else => @compileError("Unsupported number of dirs " ++ dirs),
     };
