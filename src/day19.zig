@@ -33,6 +33,12 @@ const Part = struct {
     a: i64,
     s: i64,
 
+    fn set(self: *Part, category: Category, value_to_set: i64) void {
+        return switch (category) {
+            inline else => |c| @field(self, @tagName(c)) = value_to_set,
+        };
+    }
+
     fn value(self: Part, category: Category) i64 {
         return switch (category) {
             inline else => |c| @field(self, @tagName(c)),
@@ -66,16 +72,7 @@ test labelToUsize {
     try std.testing.expectEqual(@as(usize, 26 + 26 * 26 + 1), labelToUsize("aaa"));
 }
 
-var depth: usize = 0;
-var max_depth: usize = 0;
 fn isValid(workflows: []const Workflow, part: Part, current_workflow: usize) bool {
-    depth += 1;
-    defer depth -= 1;
-    if (depth > max_depth) {
-        std.debug.print("New max depth: {}\n", .{depth});
-        max_depth = depth;
-    }
-
     if (current_workflow == comptime labelToUsize("A")) return true;
     if (current_workflow == comptime labelToUsize("R")) return false;
 
@@ -139,10 +136,11 @@ fn part1(comptime input: []const u8) !struct { part1: i64, part2: i64 } {
                 instruction_idx += 1;
             } else std.debug.panic("Did not find a fallback instruction in '{s}'!", .{line});
 
-            workflows_buf[labelToUsize(workflow_label)] = .{
+            const workflow = .{
                 .instructions = instructions_buf[instructions_start_idx..instruction_idx],
                 .fallback = labelToUsize(fallback),
             };
+            workflows_buf[labelToUsize(workflow_label)] = workflow;
         }
     }
     const workflows = workflows_buf[0..];
@@ -171,25 +169,106 @@ fn part1(comptime input: []const u8) !struct { part1: i64, part2: i64 } {
         }
     }
 
-    var progress_root = std.Progress{};
-    var progress = progress_root.start("Part 2", 4000 * 4000 * 4000 * 4000);
-    _ = progress;
-    var part_2: i64 = 0;
-    // for (1..4001) |x|
-    //     for (1..4001) |m|
-    //         for (1..4001) |a|
-    //             for (1..4001) |s| {
-    //                 defer progress.completeOne();
-    //                 const part = .{
-    //                     .x = @as(i64, @intCast(x)),
-    //                     .m = @as(i64, @intCast(m)),
-    //                     .a = @as(i64, @intCast(a)),
-    //                     .s = @as(i64, @intCast(s)),
-    //                 };
-    //                 if (isValid(workflows, part, labelToUsize("in"))) part_2 += 1;
-    //             };
-
+    var part_2: i64 = part2(workflows);
     return .{ .part1 = part_1, .part2 = part_2 };
+}
+
+fn countPossibilities(min: Part, max: Part) i64 {
+    var count: i64 = 1;
+    for (std.enums.values(Category)) |cat| count *= max.value(cat) - min.value(cat);
+    return count;
+}
+test countPossibilities {
+    const min = Part{ .x = 1, .m = 1, .a = 1, .s = 1 };
+    const max = Part{ .x = 4001, .m = 4001, .a = 4001, .s = 4001 };
+    try std.testing.expectEqual(@as(i64, 4000 * 4000 * 4000 * 4000), countPossibilities(min, max));
+}
+
+const CountOutcomesResult = struct { accept_count: i64, total: i64 };
+fn countOutcomes(workflows: []Workflow, min: Part, max: Part, current_workflow: usize) CountOutcomesResult {
+    inline for (.{ labelToUsize("A"), labelToUsize("R") }) |leaf_workflow| {
+        if (current_workflow == leaf_workflow) {
+            var count = countPossibilities(min, max);
+            if (current_workflow == comptime labelToUsize("A")) {
+                return .{ .accept_count = count, .total = count };
+            } else if (current_workflow == comptime labelToUsize("R")) {
+                return .{ .accept_count = 0, .total = count };
+            }
+        }
+    }
+
+    const workflow = workflows[current_workflow];
+
+    var combined_min = min;
+    var combined_max = max;
+
+    var count_before = countPossibilities(min, max);
+
+    var outcomes: CountOutcomesResult = .{ .accept_count = 0, .total = 0 };
+    for (workflow.instructions) |instruction| {
+        const threshold = instruction.value;
+        const category = instruction.category;
+        switch (instruction.comparison) {
+            .lt => {
+                var new_max = combined_max;
+                new_max.set(category, @min(combined_max.value(category), threshold));
+
+                const matching_count = countOutcomes(workflows, combined_min, new_max, instruction.target);
+                outcomes.accept_count += matching_count.accept_count;
+                outcomes.total += matching_count.total;
+
+                // std.debug.print("{} on {} {}\n", .{ instruction, combined_min, combined_max });
+                // std.debug.print("{} {}\n", .{ combined_min, new_max });
+
+                combined_min.set(category, @max(combined_min.value(category), instruction.value));
+
+                // std.debug.print("becomes\n", .{});
+                // std.debug.print("{} {}\n", .{ combined_min, combined_max });
+            },
+            .gt => {
+                var new_min = combined_min;
+                new_min.set(category, @max(combined_min.value(category), threshold + 1));
+
+                const matching_count = countOutcomes(workflows, new_min, combined_max, instruction.target);
+                outcomes.accept_count += matching_count.accept_count;
+                outcomes.total += matching_count.total;
+
+                // std.debug.print("{} on {} {}\n", .{ instruction, combined_min, combined_max });
+                // std.debug.print("{} {}\n", .{ new_min, combined_max });
+
+                combined_max.set(category, @min(combined_max.value(category), instruction.value + 1));
+
+                // std.debug.print("becomes\n", .{});
+                // std.debug.print("{} {}\n", .{ combined_min, combined_max });
+            },
+            else => unreachable,
+        }
+        // std.debug.print("\n", .{});
+    }
+
+    // And the fallback
+    const matching_count = countOutcomes(workflows, combined_min, combined_max, workflow.fallback);
+    outcomes.accept_count += matching_count.accept_count;
+    outcomes.total += matching_count.total;
+
+    if (outcomes.total != count_before) {
+        log.err("Not all possiblities accounted for, before forking: {}, after forking: {}", .{ count_before, outcomes.total });
+    }
+
+    return outcomes;
+}
+
+fn part2(workflows: []Workflow) i64 {
+    const min = Part{ .x = 1, .m = 1, .a = 1, .s = 1 };
+    const max = Part{ .x = 4001, .m = 4001, .a = 4001, .s = 4001 };
+
+    const outcomes = countOutcomes(workflows, min, max, labelToUsize("in"));
+    const expected_total = 4000 * 4000 * 4000 * 4000;
+    if (outcomes.total != expected_total) {
+        log.err("Outcome total was unexpected, got {}, expected {}", .{ outcomes.total, expected_total });
+    }
+
+    return outcomes.accept_count;
 }
 
 const TEST_INPUT_1 =
@@ -215,5 +294,5 @@ const TEST_INPUT_1 =
 test "simple test part1" {
     const result = try part1(TEST_INPUT_1);
     try std.testing.expectEqual(@as(i64, 19114), result.part1);
-    // try std.testing.expectEqual(@as(i64, 167409079868000), result.part2);
+    try std.testing.expectEqual(@as(i64, 167409079868000), result.part2);
 }
