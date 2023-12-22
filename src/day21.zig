@@ -145,7 +145,24 @@ fn part2(input: []const u8) !struct { part1: i64, part2: i64 } {
     const steps_to_take_excluding_start = steps_to_take - steps_from_start_to_inner_edge;
     const maps_to_get_from_center_to_edge = @divFloor(steps_to_take_excluding_start, steps_inner_edge_to_inner_edge);
     const remaining_steps_to_take = steps_to_take_excluding_start - maps_to_get_from_center_to_edge * steps_inner_edge_to_inner_edge;
-    std.debug.print("Remaining steps to take: {}\n", .{remaining_steps_to_take});
+    _ = remaining_steps_to_take;
+    // std.debug.print("Remaining steps to take: {}\n", .{remaining_steps_to_take});
+    std.debug.print("Total tiles from center to edge (exc center): {}\n", .{maps_to_get_from_center_to_edge});
+
+    inline for (.{
+        stride + stride / 2, // Top Center
+        stride * (stride / 2) + 1, // Left Center
+        stride * stride - stride - stride / 2 - 1, // Bottom Center
+        stride * (stride / 2) + stride - 2, // Right Center
+    }) |idx| {
+        // Now, reset the map
+        @memcpy(map, map_template);
+        // Set the corresponding middle bottom square to explored
+        // noting that this is a virtual step
+        map[idx] = .garden_e;
+        flood(map, stride, @intCast(steps_inner_edge_to_inner_edge - 1));
+        printMap(map, stride);
+    }
 
     // Ok we know:
     // For entirely full maps, there's and even map and an odd map
@@ -157,8 +174,60 @@ fn part2(input: []const u8) !struct { part1: i64, part2: i64 } {
     //       ./##\.
     //     ../#++#\..
     //     ./##++##\.
+    //   ../#++##++#\..
+    //   ./##++##++##\.
+    // ../#++##++##++#\..
+    // ./##++##++##++##\.
+
+    // Each row is has both of the edge pieces + a triangle number of full blocks
+    // with n & n-1 of each type of cell
+
+    @memcpy(map, map_template);
+    map[stride + 1] = .garden_e;
+    flood(map, stride, @intCast(steps_from_start_to_inner_edge));
+    printMap(map, stride);
+    map[stride + 1] = .garden_e;
+    flood(map, stride, @intCast(steps_inner_edge_to_inner_edge));
+    printMap(map, stride);
+
+    const full_count_even = countCellsFromStart(map, stride, .even, stride * stride / 2);
+    const full_count_odd = countCellsFromStart(map, stride, .odd, stride * stride / 2);
+    const center_tile_count = full_count_odd;
+    std.debug.print("Count a: {}, count b: {}\n", .{ full_count_even, full_count_odd });
+    _ = center_tile_count;
 
     var part_2: i64 = 0;
+    {
+        // Total tiles does not include the center tile, and does include the tip tile
+        const full_tiles = maps_to_get_from_center_to_edge - 1;
+        //       ../\..
+        //       ./##\.
+        //     ../#++#\..
+        //     ./##++##\.
+        //   ../#++##++#\..
+        //   ./##++##++##\.
+        // ../#++##++##++#\
+        // ..\#++##++##++#/
+        //   .\##++##++##/.
+        //   ..\#++##++#/..
+        //     .\##++##/.
+        //     ..\#++#/..
+        //       .\##/.
+        //       ..\/..
+
+        for (0..@intCast(full_tiles)) |row| {
+            const full_tiles_in_square = row * row;
+            const inner_tiles_in_square = if (row > 2) (row - 2) * (row - 2) else 0;
+            const possibilities = if (row % 2 == 0) full_count_odd else full_count_even;
+            std.debug.print("{}: {}\n", .{ row, part_2 });
+            part_2 += possibilities * @as(i64, @intCast(full_tiles_in_square - inner_tiles_in_square));
+        }
+
+        // Corners = 4
+        // Inside edges + corners = (2^(full_tiles - 2)) / 4
+        // Outside edges = (2 ^ full_tiles - 1) / 4
+    }
+
     return .{ .part1 = 0, .part2 = part_2 };
 }
 
