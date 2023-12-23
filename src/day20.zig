@@ -73,7 +73,7 @@ const Pulse = struct {
     signal: NodeState,
 };
 const PressButtonResult = struct { high: i64, low: i64, rx_low: i64 };
-fn pressButton(nodes: []?Node) PressButtonResult {
+fn pressButton(nodes: []?Node, press_count: i64) PressButtonResult {
     var result = PressButtonResult{ .high = 0, .low = 0, .rx_low = 0 };
 
     var pulses_buf: [1024]Pulse = undefined;
@@ -112,14 +112,28 @@ fn pressButton(nodes: []?Node) PressButtonResult {
                 }
             },
             .conj => |*conj| {
+                if (pulse.destination == labelToUsize("gh")) {
+                    std.debug.print("{}\t", .{press_count});
+                }
                 var all_high = true;
                 for (conj) |*c| {
                     if (c.state == .disconnected) break;
                     if (c.node == pulse.source) c.state = pulse.signal;
                     if (c.state != .high) all_high = false;
-                    // std.debug.print("{c} ", .{@tagName(c.state)[0]});
+                    if (pulse.destination == labelToUsize("gh")) {
+                        std.debug.print("{c} ", .{@tagName(c.state)[0]});
+                    }
                 }
-                // std.debug.print("\n", .{});
+                if (pulse.destination == labelToUsize("gh")) {
+                    std.debug.print("\n", .{});
+                }
+                // if (pulse.destination == labelToUsize("gh")) {
+                //     std.debug.print("gh all high = {} to {any} {}\n", .{ all_high, signalled_node.outputs, labelToUsize("gh") });
+                // }
+                // if (pulse.destination == labelToUsize("rk") and all_high) {
+                //     std.debug.print("RK all high = {} to {any} {}\n", .{ all_high, signalled_node.outputs, labelToUsize("rk") });
+                // }
+                // if (pulse.destination == labelToUsize("jj") and all_high) std.debug.print("JJ all high = {} to {any} {}\n", .{ all_high, signalled_node.outputs, labelToUsize("rk") });
                 const send_signal = if (all_high) NodeState.low else .high;
                 for (signalled_node.outputs) |output| {
                     pulses_buf[pulse_write_idx] = .{ .source = pulse.destination, .destination = output, .signal = send_signal };
@@ -195,8 +209,8 @@ fn part1(comptime input: []const u8, presses: u64) !struct { part1: i64, part2: 
     var part_2: i64 = 0;
     var press_count: i64 = 0;
     for (0..presses) |_| {
-        const r = pressButton(nodes);
         press_count += 1;
+        const r = pressButton(nodes, press_count);
         result.low += r.low;
         result.high += r.high;
 
@@ -206,16 +220,38 @@ fn part1(comptime input: []const u8, presses: u64) !struct { part1: i64, part2: 
         }
     }
 
+    std.debug.print("Starting on P2\n", .{});
+    // Found by grepping for h and multiplying
+    part_2 = 3733 * 3793 * 3947 * 4057;
     while (part_2 == 0) {
-        const r = pressButton(nodes);
         press_count += 1;
+        const r = pressButton(nodes, press_count);
 
-        std.debug.print("gh {c} {c} {c} {c}\n", .{
-            @tagName(nodes[labelToUsize("gh")].?.state.conj[0].state)[0],
-            @tagName(nodes[labelToUsize("gh")].?.state.conj[1].state)[0],
-            @tagName(nodes[labelToUsize("gh")].?.state.conj[2].state)[0],
-            @tagName(nodes[labelToUsize("gh")].?.state.conj[3].state)[0],
-        });
+        // var v = nodes[labelToUsize("jj")].?.state.conj[0].state;
+        // for (nodes[labelToUsize("jj")].?.state.conj[0..7], 0..7) |c, idx| {
+        //     _ = idx;
+        //     if (c.state != v) break;
+        // } else {
+        //     std.debug.print("All the same! ({} @ {})\n", .{ v, press_count });
+        // }
+        // std.debug.print("jj {c} {c} {c} {c} {c} {c}\n", .{
+        //     @tagName(nodes[labelToUsize("jj")].?.state.conj[0].state)[0],
+        //     @tagName(nodes[labelToUsize("jj")].?.state.conj[1].state)[0],
+        //     @tagName(nodes[labelToUsize("jj")].?.state.conj[2].state)[0],
+        //     @tagName(nodes[labelToUsize("jj")].?.state.conj[3].state)[0],
+        //     // @tagName(nodes[labelToUsize("jj")].?.state.conj[4].state)[0], // Alternating
+        //     @tagName(nodes[labelToUsize("jj")].?.state.conj[5].state)[0],
+        //     @tagName(nodes[labelToUsize("jj")].?.state.conj[6].state)[0],
+        // });
+        // std.debug.print("rk {c}\n", .{
+        //     @tagName(nodes[labelToUsize("rk")].?.state.conj[0].state)[0],
+        // });
+        // std.debug.print("gh {c} {c} {c} {c}\n", .{
+        //     @tagName(nodes[labelToUsize("gh")].?.state.conj[0].state)[0],
+        //     @tagName(nodes[labelToUsize("gh")].?.state.conj[1].state)[0],
+        //     @tagName(nodes[labelToUsize("gh")].?.state.conj[2].state)[0],
+        //     @tagName(nodes[labelToUsize("gh")].?.state.conj[3].state)[0],
+        // });
 
         if (r.rx_low != 0) {
             std.debug.print("rx was low {} times after {} presses\n", .{ r.rx_low, press_count });
